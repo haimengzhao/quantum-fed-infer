@@ -1,3 +1,7 @@
+# PBS
+*.sh
+*.o*
+
 # docs
 *.pdf
 
