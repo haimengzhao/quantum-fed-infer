@@ -25,8 +25,8 @@ tf.random.set_seed(42)
 
 n_world = 10
 
-dataset = 'mnist'
-# dataset = 'fashion'
+# dataset = 'mnist'
+dataset = 'fashion'
 readout_mode = 'softmax'
 # readout_mode = 'sample'
 encoding_mode = 'vanilla'
