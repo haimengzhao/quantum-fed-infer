@@ -10,7 +10,7 @@ from sklearn.mixture import GaussianMixture
 
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"]="true"
 
@@ -25,11 +25,10 @@ tf.random.set_seed(42)
 
 n_world = 10
 
-batch_size_list = [4, 8, 16, 32, 64, 128]
-dataset = 'mnist'
-# dataset = 'fashion'
-readout_mode = 'softmax'
-# readout_mode = 'sample'
+# dataset = 'mnist'
+dataset = 'fashion'
+# readout_mode = 'softmax'
+readout_mode = 'sample'
 encoding_mode = 'vanilla'
 # encoding_mode = 'mean'
 # encoding_mode = 'half'
@@ -122,81 +121,72 @@ if __name__ == '__main__':
     x_test = x_test / jnp.sqrt(jnp.sum(x_test**2, axis=-1, keepdims=True))
     y_test = jax.nn.one_hot(y_test, n_node)
 
-    batch_test_loss_list = []
-    batch_test_acc_list = []
-    for batch_size in tqdm(batch_size_list):
-        # world_train_loss = []
-        world_test_loss = []
-        # world_train_acc = []
-        world_test_acc = []
-        for world in tqdm(range(n_world), leave=False):
+    world_train_loss = []
+    world_test_loss = []
+    world_train_acc = []
+    world_test_acc = []
+    for world in tqdm(range(n_world)):
 
-            params_list = []
-            opt_state_list = []
-            data_list = []
-            iter_list = []
-            for node in range(n_node-1):
-                x_train_node, y_train_node = filter_pair(x_train, y_train, 0, node + 1)
-                data = tf.data.Dataset.from_tensor_slices((x_train_node, y_train_node)).batch(batch_size)
-                data_list.append(data)
-                iter_list.append(iter(data))
+        params_list = []
+        opt_state_list = []
+        data_list = []
+        iter_list = []
+        for node in range(n_node-1):
+            x_train_node, y_train_node = filter_pair(x_train, y_train, 0, node + 1)
+            data = tf.data.Dataset.from_tensor_slices((x_train_node, y_train_node)).batch(128)
+            data_list.append(data)
+            iter_list.append(iter(data))
 
-                key, subkey = jax.random.split(key)
-                params = jax.random.normal(subkey, (3 * k, n))
-                opt = optax.adam(learning_rate=1e-2)
-                opt_state = opt.init(params)
-                params_list.append(params)
-                opt_state_list.append(opt_state)
+            key, subkey = jax.random.split(key)
+            params = jax.random.normal(subkey, (3 * k, n))
+            opt = optax.adam(learning_rate=1e-2)
+            opt_state = opt.init(params)
+            params_list.append(params)
+            opt_state_list.append(opt_state)
 
-            loss_list = []
-            acc_list = []
-            for e in tqdm(range(5), leave=False):
-                for b in range(100*128//batch_size):
-                    for node in range(n_node-1):
-                        try:
-                            x, y = next(iter_list[node])
-                        except StopIteration:
-                            iter_list[node] = iter(data_list[node])
-                            x, y = next(iter_list[node])
-                        x = x.numpy()
-                        y = y.numpy()
-                        loss_val, grad_val = compute_loss(params_list[node], x, y, k)
-                        updates, opt_state_list[node] = opt.update(grad_val, opt_state_list[node], params_list[node])
-                        params_list[node] = optax.apply_updates(params_list[node], updates)
-                    
-                    avg_params = jnp.mean(jnp.stack(params_list, axis=0), axis=0)
-                    for node in range(n_node-1):
-                        params_list[node] = avg_params
-                    
-                    if b % 25 == 0:
-                        avg_loss = jnp.mean(compute_loss(avg_params, x_test[:1024], y_test[:1024], k)[0])
-                        loss_list.append(avg_loss)
-                        acc_list.append(compute_accuracy(avg_params, x_test[:1024], y_test[:1024], k).mean())
-                        tqdm.write(f"world {world}, epoch {e}, batch {b}/{100}: loss {avg_loss}, accuracy {acc_list[-1]}")
+        loss_list = []
+        acc_list = []
+        for e in tqdm(range(5), leave=False):
+            for b in range(100):
+                for node in range(n_node-1):
+                    try:
+                        x, y = next(iter_list[node])
+                    except StopIteration:
+                        iter_list[node] = iter(data_list[node])
+                        x, y = next(iter_list[node])
+                    x = x.numpy()
+                    y = y.numpy()
+                    loss_val, grad_val = compute_loss(params_list[node], x, y, k)
+                    updates, opt_state_list[node] = opt.update(grad_val, opt_state_list[node], params_list[node])
+                    params_list[node] = optax.apply_updates(params_list[node], updates)
+                
+                avg_params = jnp.mean(jnp.stack(params_list, axis=0), axis=0)
+                for node in range(n_node-1):
+                    params_list[node] = avg_params
+                
+                if b % 25 == 0:
+                    avg_loss = jnp.mean(compute_loss(avg_params, x_test[:1024], y_test[:1024], k)[0])
+                    loss_list.append(avg_loss)
+                    acc_list.append(compute_accuracy(avg_params, x_test[:1024], y_test[:1024], k).mean())
+                    tqdm.write(f"world {world}, epoch {e}, batch {b}/{100}: loss {avg_loss}, accuracy {acc_list[-1]}")
 
-            test_acc = jnp.mean(pred(avg_params, x_test[:1024], k).argmax(axis=-1) == y_test[:1024].argmax(axis=-1))
-            test_loss = -jnp.mean(jnp.log(pred(avg_params, x_test[:1024], k)) * y_test[:1024])
+        test_acc = jnp.mean(pred(avg_params, x_test[:1024], k).argmax(axis=-1) == y_test[:1024].argmax(axis=-1))
+        test_loss = -jnp.mean(jnp.log(pred(avg_params, x_test[:1024], k)) * y_test[:1024])
 
-            # world_train_loss.append(loss_list)
-            world_test_loss.append(test_loss)
-            # world_train_acc.append(acc_list)
-            world_test_acc.append(test_acc)
-            tqdm.write(f"world {world}: test loss {test_loss}, test accuracy {test_acc}")
+        world_train_loss.append(loss_list)
+        world_test_loss.append(test_loss)
+        world_train_acc.append(acc_list)
+        world_test_acc.append(test_acc)
+        tqdm.write(f"world {world}: test loss {test_loss}, test accuracy {test_acc}")
 
-        # os.makedirs(f'./{dataset}/qFedAvg/', exist_ok=True) 
-        # jnp.save(f'./{dataset}/qFedAvg/train_loss.npy', world_train_loss)
-        # jnp.save(f'./{dataset}/qFedAvg/train_acc.npy', world_train_acc)
-        # jnp.save(f'./{dataset}/qFedAvg/test_loss.npy', world_test_loss)
-        # jnp.save(f'./{dataset}/qFedAvg/test_acc.npy', world_test_acc)
+    os.makedirs(f'./{dataset}/qFedAvg/', exist_ok=True) 
+    jnp.save(f'./{dataset}/qFedAvg/train_loss.npy', world_train_loss)
+    jnp.save(f'./{dataset}/qFedAvg/train_acc.npy', world_train_acc)
+    jnp.save(f'./{dataset}/qFedAvg/test_loss.npy', world_test_loss)
+    jnp.save(f'./{dataset}/qFedAvg/test_acc.npy', world_test_acc)
 
-        avg_test_loss = jnp.mean(jnp.array(world_test_loss), axis=0)
-        avg_test_acc = jnp.mean(jnp.array(world_test_acc), axis=0)
-        std_test_loss = jnp.std(jnp.array(world_test_loss), axis=0)
-        std_test_acc = jnp.std(jnp.array(world_test_acc), axis=0)
-        tqdm.write(f'batchsize{batch_size}, test loss: {avg_test_loss}+-{std_test_loss}, test acc: {avg_test_acc}+-{std_test_acc}')
-        batch_test_loss_list.append((avg_test_loss, std_test_loss))
-        batch_test_acc_list.append((avg_test_acc, std_test_acc))
-    
-    os.makedirs(f'./{dataset}/qFedAvg/', exist_ok=True)
-    jnp.save(f'./{dataset}/qFedAvg/batch_test_loss.npy', batch_test_loss_list)
-    jnp.save(f'./{dataset}/qFedAvg/batch_test_acc.npy', batch_test_acc_list)
+    avg_test_loss = jnp.mean(jnp.array(world_test_loss), axis=0)
+    avg_test_acc = jnp.mean(jnp.array(world_test_acc), axis=0)
+    std_test_loss = jnp.std(jnp.array(world_test_loss), axis=0)
+    std_test_acc = jnp.std(jnp.array(world_test_acc), axis=0)
+    print(f'test loss: {avg_test_loss}+-{std_test_loss}, test acc: {avg_test_acc}+-{std_test_acc}')
