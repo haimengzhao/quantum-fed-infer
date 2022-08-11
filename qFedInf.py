@@ -25,8 +25,8 @@ tf.random.set_seed(42)
 
 n_world = 10
 
-# dataset = 'mnist'
-dataset = 'fashion'
+dataset = 'mnist'
+# dataset = 'fashion'
 # readout_mode = 'softmax'
 readout_mode = 'sample'
 encoding_mode = 'vanilla'
@@ -70,7 +70,7 @@ def loss(params, x, y, k):
     c = tc.Circuit(n, inputs=x)
     c = clf(params, c, k)
     probs = readout(c)
-    return -jnp.mean(y * jnp.log(probs))
+    return -jnp.mean(jnp.sum(y * jnp.log(probs + 1e-7), axis=-1))
 loss = K.jit(loss, static_argnums=[3])
 
 def accuracy(params, x, y, k):
