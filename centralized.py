@@ -27,8 +27,8 @@ n_world = 10
 
 dataset = 'mnist'
 # dataset = 'fashion'
-# readout_mode = 'softmax'
-readout_mode = 'sample'
+readout_mode = 'softmax'
+# readout_mode = 'sample'
 encoding_mode = 'vanilla'
 # encoding_mode = 'mean'
 # encoding_mode = 'half'

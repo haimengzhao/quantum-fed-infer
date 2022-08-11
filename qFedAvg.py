@@ -27,8 +27,8 @@ n_world = 10
 
 dataset = 'mnist'
 # dataset = 'fashion'
-# readout_mode = 'softmax'
-readout_mode = 'sample'
+readout_mode = 'softmax'
+# readout_mode = 'sample'
 encoding_mode = 'vanilla'
 # encoding_mode = 'mean'
 # encoding_mode = 'half'
@@ -133,6 +133,7 @@ if __name__ == '__main__':
         iter_list = []
         for node in range(n_node-1):
             x_train_node, y_train_node = filter_pair(x_train, y_train, 0, node + 1)
+            # x_train_node, y_train_node = x_train, jax.nn.one_hot(y_train, n_node)
             data = tf.data.Dataset.from_tensor_slices((x_train_node, y_train_node)).batch(128)
             data_list.append(data)
             iter_list.append(iter(data))
