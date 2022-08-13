@@ -37,8 +37,10 @@ n = 8
 n_node = 8
 k = 48
 
-def filter_pair(x, y, a, b):
-    keep = (y == a) | (y == b)
+def filter(x, y, class_list):
+    keep = jnp.zeros(len(y)).astype(bool)
+    for c in class_list:
+        keep = keep | (y == c)
     x, y = x[keep], y[keep]
     y = jax.nn.one_hot(y, n_node)
     return x, y
@@ -132,7 +134,7 @@ if __name__ == '__main__':
         data_list = []
         iter_list = []
         for node in range(n_node-1):
-            x_train_node, y_train_node = filter_pair(x_train, y_train, 0, node + 1)
+            x_train_node, y_train_node = filter(x_train, y_train, [0, node+1])
             # x_train_node, y_train_node = x_train, jax.nn.one_hot(y_train, n_node)
             data = tf.data.Dataset.from_tensor_slices((x_train_node, y_train_node)).batch(128)
             data_list.append(data)
